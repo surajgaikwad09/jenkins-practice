@@ -1,0 +1,70 @@
+
+pipeline {
+    agent any
+
+    environment {
+        TOMCAT_URL = 'http://YOUR_TOMCAT_SERVER:8080'
+        TOMCAT_CREDENTIALS = 'tomcat-credentials'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Fetching code from GitHub'
+                checkout scm
+            }
+        }
+
+        stage('Check Tools') {
+            steps {
+                sh 'java -version'
+                sh 'mvn -version'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                echo 'Building Java application'
+                sh 'mvn clean package -DskipTests'
+            }
+        }
+
+        stage('Test') {
+            steps {
+                echo 'Running unit tests'
+                sh 'mvn test'
+            }
+        }
+
+        stage('Deploy to Tomcat') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'tomcat-credentials',
+                        usernameVariable: 'TOMCAT_USER',
+                        passwordVariable: 'TOMCAT_PASS'
+                    )
+                ]) {
+                    sh '''
+                        WAR_FILE=$(find target -maxdepth 1 -name '*.war' -print -quit)
+                        test -n "$WAR_FILE"
+                        curl --fail --show-error \
+                          --user "$TOMCAT_USER:$TOMCAT_PASS" \
+                          --upload-file "$WAR_FILE" \
+                          "$TOMCAT_URL/manager/text/deploy?path=/myapp&update=true"
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Application deployed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed. Check Console Output.'
+        }
+    }
+}
+}
