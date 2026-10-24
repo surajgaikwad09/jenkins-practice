@@ -2,6 +2,16 @@
 pipeline {
     agent any
 
+    tools {
+        jdk 'JDK17'
+        maven 'Maven3'
+    }
+
+    environment {
+        TOMCAT_URL = 'http://10.198.42.100:8080'
+        TOMCAT_CREDENTIALS = 'tomcat-credentials'
+    }
+
     stages {
         stage('Checkout') {
             steps {
@@ -12,14 +22,44 @@ pipeline {
 
         stage('Build') {
             steps {
-                echo 'Building application'
+                echo 'Building Java application'
+                sh 'mvn clean package -DskipTests'
             }
         }
 
         stage('Test') {
             steps {
-                echo 'Testing application'
+                echo 'Running unit tests'
+                sh 'mvn test'
             }
+        }
+
+        stage('Deploy to Tomcat') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: "${TOMCAT_CREDENTIALS}",
+                        usernameVariable: 'TOMCAT_USER',
+                        passwordVariable: 'TOMCAT_PASS'
+                    )
+                ]) {
+                    sh '''
+                        curl --fail --show-error \
+                          --user "$TOMCAT_USER:$TOMCAT_PASS" \
+                          --upload-file target/*.war \
+                          "$TOMCAT_URL/manager/text/deploy?path=/myapp&update=true"
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Application deployed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed. Check the Jenkins console output.'
         }
     }
 }
